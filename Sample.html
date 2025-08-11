@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Music Video Sync</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Background image behind text */
+        #background-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('https://i.imgur.com/tTqqjda.png'); /* Imgur image URL */
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            z-index: -1; /* Make sure it's behind the text */
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Center the buttons */
+        .upload-buttons {
+            position: absolute;
+            top: 70%; /* Move buttons further down */
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 1; /* Ensure buttons are above the background */
+        }
+
+        /* Style for the file input buttons */
+        input[type="file"] {
+            opacity: 0;
+            width: 200px;
+            height: 50px;
+            position: absolute;
+            z-index: -1;
+        }
+
+        label {
+            display: inline-block;
+            background-color: #fff;
+            color: #000;
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            border: 2px solid #fff;
+            transition: all 0.3s ease;
+        }
+
+        label:hover {
+            background-color: #f0f0f0;
+        }
+
+        #start-button {
+            padding: 10px 20px;
+            background-color: #fff;
+            color: #000;
+            border: none;
+            cursor: pointer;
+            opacity: 0.8;
+            border-radius: 10px;
+            font-size: 18px;
+            border: 2px solid #fff;
+        }
+
+        #start-button:hover {
+            background-color: #f0f0f0;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Background Image -->
+    <div id="background-image"></div>
+
+    <!-- Centered Upload Buttons -->
+    <div class="upload-buttons">
+        <label for="audio-upload">Choose Audio</label>
+        <input type="file" id="audio-upload" accept="audio/*" />
+        
+        <button id="start-button" disabled>Start</button>
+
+        <label for="video-upload">Choose Video</label>
+        <input type="file" id="video-upload" accept="video/*" />
+    </div>
+
+    <canvas id="visualizer"></canvas>
+
+    <script>
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const audioUpload = document.getElementById('audio-upload');
+        const videoUpload = document.getElementById('video-upload');
+        const startButton = document.getElementById('start-button');
+        const uploadButtons = document.querySelector('.upload-buttons');
+
+        let audioContext, analyser, bufferSource, frequencyData, audioElement;
+        let videoElement, lastCutTime = 0;
+        let videoPlaying = false;
+        let currentFrameDuration = 1;
+        let beatIntensity = 0;
+
+        let audioFile, videoFile;
+
+        // Resize canvas to fit screen
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        // Load and play video
+        function loadVideo(file) {
+            videoElement = document.createElement('video');
+            videoElement.src = URL.createObjectURL(file);
+            videoElement.loop = true;
+            videoElement.muted = true;
+            videoElement.play();
+            videoElement.style.position = 'absolute';
+            videoElement.style.top = '0';
+            videoElement.style.left = '0';
+            videoElement.style.width = '100%';
+            videoElement.style.height = '100%';
+            document.body.appendChild(videoElement);
+            videoPlaying = true;
+        }
+
+        // Jump to a specific section of the video based on beat intensity
+        function jumpToVideoSection() {
+            const lowFreqThreshold = 60; // Low frequency (bass) section
+            const midFreqThreshold = 250; // Mid frequency section
+            const highFreqThreshold = 1000; // High frequency section
+
+            let sectionStart = 0;
+
+            if (beatIntensity < lowFreqThreshold) {
+                sectionStart = Math.random() * 0.25; // First quarter of the video
+            } else if (beatIntensity < midFreqThreshold) {
+                sectionStart = Math.random() * 0.5 + 0.25; // Middle half of the video
+            } else if (beatIntensity < highFreqThreshold) {
+                sectionStart = Math.random() * 0.25 + 0.75; // Last quarter of the video
+            }
+
+            videoElement.currentTime = videoElement.duration * sectionStart;
+        }
+
+        // Flash effect logic based on beat intensity
+        function flashOnBeat() {
+            const currentTime = audioContext.currentTime;
+            beatIntensity = frequencyData.reduce((a, b) => a + b) / frequencyData.length;
+
+            // Adjust how fast we cut based on the intensity
+            currentFrameDuration = Math.max(0.5, 1 - beatIntensity / 255);
+
+            // Prevent very fast cuts by limiting to a minimum duration (0.3s)
+            currentFrameDuration = Math.max(currentFrameDuration, 0.3);
+
+            if (currentTime - lastCutTime > currentFrameDuration) {
+                lastCutTime = currentTime;
+
+                // Jump to a random video section based on intensity
+                jumpToVideoSection();
+
+                // Flash the screen (to simulate the cut)
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        // Update visualizer based on frequency data
+        function updateVisualizer() {
+            analyser.getByteFrequencyData(frequencyData);
+
+            // Trigger flash effect based on beat
+            flashOnBeat();
+
+            // Draw video frame (if video is playing)
+            if (videoPlaying) {
+                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+            }
+
+            requestAnimationFrame(updateVisualizer);
+        }
+
+        // Load the audio file
+        function loadAudioFile(file) {
+            audioElement = new Audio();
+            audioElement.src = URL.createObjectURL(file);
+            audioElement.load();
+            audioElement.play();
+
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+
+            const bufferSource = audioContext.createMediaElementSource(audioElement);
+            bufferSource.connect(analyser);
+            analyser.connect(audioContext.destination);
+
+            const bufferLength = analyser.frequencyBinCount;
+            frequencyData = new Uint8Array(bufferLength);
+
+            // Start the visualization loop
+            updateVisualizer();
+        }
+
+        // Handle audio upload
+        audioUpload.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                audioFile = file;
+                enableStartButton();
+            }
+        });
+
+        // Handle video upload
+        videoUpload.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                videoFile = file;
+                enableStartButton();
+            }
+        });
+
+        // Enable the start button once both files are uploaded
+        function enableStartButton() {
+            if (audioFile && videoFile) {
+                startButton.disabled = false;
+            }
+        }
+
+        // Hide all UI elements after the start button is clicked
+        function hideUI() {
+            uploadButtons.style.display = 'none'; // Hide upload buttons
+            startButton.style.display = 'none'; // Hide start button
+            canvas.style.display = 'block'; // Show canvas
+        }
+
+        // Start playback once both files are uploaded
+        startButton.addEventListener('click', () => {
+            if (audioFile && videoFile) {
+                loadAudioFile(audioFile);
+                loadVideo(videoFile);
+                hideUI(); // Hide UI elements and show canvas
+            }
+        });
+
+        // Ensure the canvas resizes when the window is resized
+        window.addEventListener('resize', resizeCanvas);
+
+        // Initial canvas size
+        resizeCanvas();
+    </script>
+</body>
+</html>
