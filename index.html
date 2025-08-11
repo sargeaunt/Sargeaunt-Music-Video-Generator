@@ -116,7 +116,7 @@
         const uploadButtons = document.querySelector('.upload-buttons');
 
         let audioContext, analyser, bufferSource, frequencyData, audioElement;
-        let videoElement, lastBeatTime = 0, lastCutTime = 0;
+        let videoElement, lastCutTime = 0;
         let videoPlaying = false;
         let currentFrameDuration = 1;
         let beatIntensity = 0;
@@ -145,7 +145,7 @@
             videoPlaying = true;
         }
 
-        // Jump to a specific section of the video
+        // Jump to a specific section of the video based on beat intensity
         function jumpToVideoSection() {
             const lowFreqThreshold = 60; // Low frequency (bass) section
             const midFreqThreshold = 250; // Mid frequency section
@@ -164,13 +164,16 @@
             videoElement.currentTime = videoElement.duration * sectionStart;
         }
 
-        // Flash effect logic
+        // Flash effect logic based on beat intensity
         function flashOnBeat() {
             const currentTime = audioContext.currentTime;
             beatIntensity = frequencyData.reduce((a, b) => a + b) / frequencyData.length;
 
             // Adjust how fast we cut based on the intensity
             currentFrameDuration = Math.max(0.5, 1 - beatIntensity / 255);
+
+            // Prevent very fast cuts by limiting to a minimum duration (0.3s)
+            currentFrameDuration = Math.max(currentFrameDuration, 0.3);
 
             if (currentTime - lastCutTime > currentFrameDuration) {
                 lastCutTime = currentTime;
@@ -271,4 +274,5 @@
     </script>
 </body>
 </html>
+
 
