@@ -1,278 +1,617 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dynamic Music Video Sync</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background-color: #000;
-            font-family: Arial, sans-serif;
-        }
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dynamic Music Video Sync</title>
+  <style>
+    :root{
+      --fg:#fff; --bg:#000; --muted:#cfcfcf; --accent:#ff3b3b; --line:#ffffff33;
+      --expandedWidth: 980px;
+      --compactWidth: 640px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,Helvetica,sans-serif;overflow-y:auto}
+    #background-image{position:fixed;inset:0;background:url('https://i.imgur.com/tTqqjda.png') center/cover no-repeat;z-index:-1}
 
-        /* Background image behind text */
-        #background-image {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-image: url('https://i.imgur.com/tTqqjda.png'); /* Imgur image URL */
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            z-index: -1; /* Make sure it's behind the text */
-        }
+    /* Hide canvas until Start so splash image stays clean */
+    canvas{position:fixed;inset:0;width:100vw;height:100vh;display:none}
 
-        canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
+    .upload-wrap{
+      position:relative;
+      margin: 70vh auto 24px auto;
+      width: min(96vw, var(--expandedWidth));
+      display:flex;flex-direction:column;gap:14px;align-items:center;z-index:2;
+    }
+    .row{
+      display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:center;
+      width:max-content;max-width:100%;
+    }
 
-        /* Center the buttons */
-        .upload-buttons {
-            position: absolute;
-            top: 70%; /* Move buttons further down */
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            z-index: 1; /* Ensure buttons are above the background */
-        }
+    input[type="file"]{position:absolute;opacity:0;width:220px;height:46px;z-index:-1}
 
-        /* Style for the file input buttons */
-        input[type="file"] {
-            opacity: 0;
-            width: 200px;
-            height: 50px;
-            position: absolute;
-            z-index: -1;
-        }
+    .btn, .label-btn{
+      display:inline-block;padding:10px 20px;border:2px solid #fff;border-radius:10px;
+      background:#fff;color:#000;font-size:16px;cursor:pointer;transition:all .2s ease;
+    }
+    .btn:hover, .label-btn:hover{background:#f0f0f0}
+    .label-btn{user-select:none}
+    #start-button{font-size:18px}
 
-        label {
-            display: inline-block;
-            background-color: #fff;
-            color: #000;
-            padding: 10px 20px;
-            margin: 10px;
-            font-size: 16px;
-            border-radius: 10px;
-            cursor: pointer;
-            border: 2px solid #fff;
-            transition: all 0.3s ease;
-        }
+    /* Record: hollow -> active red */
+    #toggle-record{background:transparent;color:#fff;border-color:#fff}
+    #toggle-record[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
 
-        label:hover {
-            background-color: #f0f0f0;
-        }
+    /* Advanced settings */
+    details.settings{
+      width: var(--compactWidth);
+      margin: 8px auto 64px auto;
+      border:1px solid var(--line);border-radius:14px;background:#00000080;
+      backdrop-filter: blur(4px);
+      transition: width .25s ease;
+      overflow: clip;
+    }
+    details.settings[open]{ width: min(96vw, var(--expandedWidth)); }
+    details.settings > summary{
+      list-style:none;cursor:pointer;padding:14px 16px;border-radius:14px;
+      display:flex;align-items:center;gap:12px;user-select:none; outline:none;
+    }
+    details.settings > summary::-webkit-details-marker{display:none}
+    .chev{width:10px;height:10px;border-right:2px solid var(--fg);border-bottom:2px solid var(--fg);transform:rotate(-45deg);transition:.2s}
+    details[open] .chev{transform:rotate(45deg)}
 
-        #start-button {
-            padding: 10px 20px;
-            background-color: #fff;
-            color: #000;
-            border: none;
-            cursor: pointer;
-            opacity: 0.8;
-            border-radius: 10px;
-            font-size: 18px;
-            border: 2px solid #fff;
-        }
+    .panel{
+      padding:10px 16px 16px 16px;border-top:1px solid var(--line);
+      display:grid;grid-template-columns:repeat(12,1fr);gap:14px;
+    }
+    .group{grid-column:span 6;min-width:280px;border:1px dashed var(--line);border-radius:12px;padding:12px}
+    .group h4{margin:0 0 8px 0;font-size:14px;color:var(--muted);letter-spacing:.02em;font-weight:600}
 
-        #start-button:hover {
-            background-color: #f0f0f0;
-        }
+    .control{display:flex;align-items:center;gap:10px;margin:8px 0}
+    .control label{font-size:13px;color:var(--muted);min-width:140px}
+    .control input[type="range"]{flex:1}
+    .hint{font-size:12px;color:#aaaaaa;margin-top:4px}
 
-    </style>
+    .radios{display:flex;flex-wrap:wrap;gap:8px}
+    .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:13px;cursor:pointer}
+    .chip input{accent-color:#fff}
+
+    select{background:#111;color:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+    .multi-wrap{display:flex;flex-direction:column;gap:8px}
+    .hidden{display:none}
+
+    #stop-recording{
+      position:fixed;left:16px;bottom:16px;z-index:3;display:none;width:44px;height:44px;border-radius:10px;
+      background:rgba(0,0,0,.6);border:2px solid rgba(255,255,255,.9);backdrop-filter:blur(6px);
+      align-items:center;justify-content:center;cursor:pointer;transition:transform .15s ease;
+    }
+    #stop-recording:hover{ transform: translateY(-2px); }
+    #stop-recording svg{ width:22px;height:22px;fill:#ff4d4d; }
+  </style>
 </head>
 <body>
+  <div id="background-image"></div>
 
-    <!-- Background Image -->
-    <div id="background-image"></div>
+  <div class="upload-wrap" id="uploadWrap">
+    <div class="row" id="buttonsRow">
+      <label for="audio-upload" class="label-btn">Choose Audio</label>
+      <input type="file" id="audio-upload" accept="audio/*"/>
 
-    <!-- Centered Upload Buttons -->
-    <div class="upload-buttons">
-        <label for="audio-upload">Choose Audio</label>
-        <input type="file" id="audio-upload" accept="audio/*" />
-        
-        <button id="start-button" disabled>Start</button>
+      <label for="video-upload" class="label-btn">Choose Video</label>
+      <input type="file" id="video-upload" accept="video/*"/>
 
-        <label for="video-upload">Choose Video</label>
-        <input type="file" id="video-upload" accept="video/*" />
+      <button id="toggle-record" aria-pressed="false" class="btn" title="Record video (WebM)">Record video</button>
+
+      <button id="start-button" class="btn" disabled>Start</button>
     </div>
 
-    <canvas id="visualizer"></canvas>
+    <details class="settings" id="advSettings">
+      <summary><span class="chev"></span><strong>Advanced Settings (for nerds)</strong> <span style="opacity:.65;font-size:13px"> (optional)</span></summary>
+      <div class="panel">
+        <div class="group">
+          <h4>Cut Path</h4>
+          <div class="control">
+            <label for="path-mode">Random ↔ Semi-linear</label>
+            <input id="path-mode" type="range" min="0" max="100" value="40">
+          </div>
+          <div class="hint">0 = fully random jumps · 100 = mostly forward with occasional skips.</div>
+        </div>
 
-    <script>
-        const canvas = document.getElementById('visualizer');
-        const ctx = canvas.getContext('2d');
-        const audioUpload = document.getElementById('audio-upload');
-        const videoUpload = document.getElementById('video-upload');
-        const startButton = document.getElementById('start-button');
-        const uploadButtons = document.querySelector('.upload-buttons');
+        <div class="group">
+          <h4>Beat Alignment</h4>
+          <div class="control">
+            <label for="grid-tightness">Loose ↔ Tight</label>
+            <input id="grid-tightness" type="range" min="0" max="100" value="65">
+          </div>
+          <div class="hint">Higher values snap cuts to the estimated beat grid more aggressively.</div>
+        </div>
 
-        let audioContext, analyser, bufferSource, frequencyData, audioElement;
-        let videoElement, lastCutTime = 0;
-        let videoPlaying = false;
-        let currentFrameDuration = 1;
-        let beatIntensity = 0;
+        <div class="group">
+          <h4>Cut Frequency</h4>
+          <div class="control">
+            <label for="cut-rate">Fewer ←→ More</label>
+            <input id="cut-rate" type="range" min="0" max="100" value="50">
+          </div>
+          <div class="hint">Adjusts the minimum time between cuts.</div>
+        </div>
 
-        let audioFile, videoFile;
+        <div class="group">
+          <h4>Cut Length Variance</h4>
+          <div class="control">
+            <label for="variance">Stable ←→ Chaotic</label>
+            <input id="variance" type="range" min="0" max="100" value="35">
+          </div>
+          <div class="hint">Controls how often long holds vs quick cuts appear.</div>
+        </div>
 
-        // Resize canvas to fit screen
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+        <div class="group">
+          <h4>Beat Sensitivity</h4>
+          <div class="control">
+            <label for="sensitivity">Low ←→ High</label>
+            <input id="sensitivity" type="range" min="0" max="100" value="55">
+          </div>
+          <div class="hint">Higher = more likely to cut on subtle transients.</div>
+        </div>
+
+        <div class="group">
+          <h4>Returning Shots</h4>
+          <div class="control">
+            <label for="allow-repeats">Allow repeat shots</label>
+            <input id="allow-repeats" type="checkbox" checked>
+          </div>
+        </div>
+
+        <div class="group" style="grid-column:span 12">
+          <h4>Video Progression</h4>
+          <div class="control">
+            <div class="radios">
+              <label class="chip"><input type="radio" name="progression" value="random" checked> Random sections</label>
+              <label class="chip"><input type="radio" name="progression" value="semi"> Semi-linear</label>
+              <label class="chip"><input type="radio" name="progression" value="linear-skips"> Linear with skips</label>
+              <label class="chip"><input type="radio" name="progression" value="strict"> Strict linear</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <h4>Multiple Videos</h4>
+          <div class="multi-wrap">
+            <label class="chip"><input type="checkbox" id="enable-multi"> Enable multi-video</label>
+            <div id="multi-config" class="hidden">
+              <div class="control">
+                <label for="multi-mode">When multiple are loaded</label>
+                <select id="multi-mode">
+                  <option value="cycle">Cycle through all</option>
+                  <option value="random">Random pick each cut</option>
+                  <option value="stick">Stick to one until change</option>
+                </select>
+              </div>
+              <label for="videos-upload" class="label-btn">Choose Videos</label>
+              <input type="file" id="videos-upload" accept="video/*" multiple>
+              <div class="hint">Optional: add multiple clips to mix between.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <!-- stop (not recorded) -->
+  <button id="stop-recording" aria-label="Stop and download recording" title="Stop & download">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"></rect></svg>
+  </button>
+
+  <canvas id="visualizer"></canvas>
+
+  <script>
+    /* ---------- DOM refs ---------- */
+    const canvas = document.getElementById('visualizer');
+    const ctx = canvas.getContext('2d');
+    const audioUpload = document.getElementById('audio-upload');
+    const videoUpload = document.getElementById('video-upload');
+    const startButton = document.getElementById('start-button');
+    const recordToggleBtn = document.getElementById('toggle-record');
+    const stopRecordBtn = document.getElementById('stop-recording');
+    const adv = document.getElementById('advSettings');
+    const row = document.getElementById('buttonsRow');
+    const enableMulti = document.getElementById('enable-multi');
+    const multiConfig = document.getElementById('multi-config');
+    const multiModeSel = document.getElementById('multi-mode');
+    const videosUpload = document.getElementById('videos-upload');
+
+    /* ---------- Render/record defaults (stable high quality) ---------- */
+    const RENDER = {
+      width: 1920, height: 1080, fps: 30,
+      videoBitsPerSecond: 16_000_000,   // ~16 Mbps for clean 1080p
+      audioBitsPerSecond: 192_000
+    };
+
+    function prepareRenderSurface(){
+      canvas.width  = RENDER.width;
+      canvas.height = RENDER.height;
+      // Fullscreen preview (CSS); buffer stays at recording res
+      canvas.style.width  = '100vw';
+      canvas.style.height = '100vh';
+      // High quality scaling when source > target
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+    }
+
+    // Draw preserving aspect ratio with black bars (letterbox/pillarbox)
+    function drawContain(v, cw, ch){
+      const vw = v.videoWidth || 1, vh = v.videoHeight || 1;
+      const scale = Math.min(cw / vw, ch / vh);
+      const dw = Math.round(vw * scale), dh = Math.round(vh * scale);
+      const dx = ((cw - dw) >> 1), dy = ((ch - dh) >> 1);
+      // Fill bars (black background)
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.drawImage(v, 0, 0, vw, vh, dx, dy, dw, dh);
+    }
+
+    /* ---------- Engine state ---------- */
+    let audioContext, analyser, frequencyData, audioElement;
+    let mediaDest, mediaRecorder, recordedChunks = [], isRecording = false, recordEnabled = false;
+
+    let videoElement = null;   // single-video mode element
+    let videos = [];           // multi-video elements
+    let currentVid = 0;
+    let videoPlaying = false;
+    let videoReady = false;
+
+    let lastCutTime = 0;
+    let prevFreq = null;
+
+    // Coverage / variety
+    let NUM_BUCKETS = 24;
+    let bucketOrder = [], bucketPtr = 0, recentBuckets = [];
+    let REPEAT_CHANCE = 0.20;
+    let HOLD_CHANCE = 0.12;
+    let RECENT_POOL = 6;
+
+    // Beat detection / scheduler
+    let beatPeriod = null, beatPhaseT0 = null, scheduledCutAt = null;
+    let LATENCY_COMP = 0.05;
+    const FLUX_HISTORY_FRAMES = 45;
+    const fluxHistory = new Array(FLUX_HISTORY_FRAMES).fill(0);
+    let fluxIndex = 0, fluxCount = 0;
+
+    const SPEC_HISTORY = 8;
+    const specStack = new Array(SPEC_HISTORY);
+    let specPtr = 0, specCount = 0;
+
+    const onsetTimes = [];
+    const DENSITY_WINDOW = 3.0;
+
+    // Tunables
+    let BASE_MIN_INTERVAL = 0.30;
+    let BEAT_SNAP_WINDOW = 0.12;
+    let THRESH_K = 2.5;
+    const BPM_MIN = 75, BPM_MAX = 180;
+    const KICK_MAX_HZ = 150, SNARE_MAX_HZ = 3000;
+
+    // Path / progression
+    let pathMode = 0.40;             // 0=random .. 1=semi-linear
+    let progression = 'random';      // 'random' | 'semi' | 'linear-skips' | 'strict'
+
+    /* ---------- UI controls ---------- */
+    const pathSlider = document.getElementById('path-mode');
+    const gridSlider = document.getElementById('grid-tightness');
+    const rateSlider = document.getElementById('cut-rate');
+    const varSlider  = document.getElementById('variance');
+    const sensSlider = document.getElementById('sensitivity');
+    const repeatsChk = document.getElementById('allow-repeats');
+
+    const mapRange = (v,a,b)=> a + (b-a)*(v/100);
+
+    function applyUIToEngine(){
+      pathMode = pathSlider.value/100;
+      BEAT_SNAP_WINDOW   = mapRange(+gridSlider.value, 0.04, 0.18);
+      BASE_MIN_INTERVAL  = mapRange(100-+rateSlider.value, 0.20, 0.60);
+      const variance = varSlider.value/100;
+      HOLD_CHANCE   = 0.05 + 0.20*variance;
+      REPEAT_CHANCE = repeatsChk.checked ? (0.05 + 0.30*variance) : 0.0;
+      THRESH_K = mapRange(100-+sensSlider.value, 1.8, 3.2);
+      const sel = document.querySelector('input[name="progression"]:checked');
+      progression = (sel && sel.value) || 'random';
+    }
+
+    /* ---------- Layout helpers ---------- */
+    function setWidths(){
+      const w = Math.ceil(row.getBoundingClientRect().width);
+      const expanded = Math.min(window.innerWidth * 0.96, 980);
+      document.documentElement.style.setProperty('--compactWidth', w + 'px');
+      document.documentElement.style.setProperty('--expandedWidth', expanded + 'px');
+    }
+    window.addEventListener('resize', setWidths);
+    setWidths();
+    adv.addEventListener('toggle', ()=>{ if (adv.open) requestAnimationFrame(()=> adv.scrollIntoView({behavior:'smooth',block:'nearest'})); });
+    enableMulti.addEventListener('change', ()=> multiConfig.classList.toggle('hidden', !enableMulti.checked));
+
+    recordToggleBtn.addEventListener('click', ()=>{
+      recordEnabled = !recordEnabled;
+      recordToggleBtn.setAttribute('aria-pressed', String(recordEnabled));
+    });
+
+    /* ---------- Canvas sizing ---------- */
+    function resize(){ /* keep CSS fullscreen, buffer stays at fixed RENDER size */ }
+    addEventListener('resize', resize);
+
+    /* ---------- Coverage sampler ---------- */
+    function refillBuckets(){
+      bucketOrder = Array.from({length:NUM_BUCKETS}, (_,i)=>i);
+      for (let i=NUM_BUCKETS-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [bucketOrder[i],bucketOrder[j]]=[bucketOrder[j],bucketOrder[i]]; }
+      bucketPtr = 0;
+    }
+    function pushRecent(idx){ recentBuckets.push(idx); if (recentBuckets.length>RECENT_POOL) recentBuckets.shift(); }
+    refillBuckets();
+    let lastSeqIdx = 0;
+
+    function pickSectionU(duration){
+      if (!duration || duration<=0) return null;
+      if (progression === 'strict') return null;
+      if (Math.random() < HOLD_CHANCE) return null;
+
+      let chosenIdx;
+      if (REPEAT_CHANCE>0 && Math.random() < REPEAT_CHANCE && recentBuckets.length){
+        const r = (Math.random()*recentBuckets.length)|0; chosenIdx = recentBuckets[r];
+      } else {
+        const linearPick = (progression==='semi' || progression==='linear-skips') ? true : (Math.random() < pathMode);
+        if (linearPick){
+          const jump = (progression==='linear-skips') ? (1 + ((Math.random()*4)|0)) : 1;
+          lastSeqIdx = (lastSeqIdx + jump) % NUM_BUCKETS;
+          chosenIdx = lastSeqIdx;
+        } else {
+          if (bucketPtr >= bucketOrder.length) refillBuckets();
+          chosenIdx = bucketOrder[bucketPtr++];
+          lastSeqIdx = chosenIdx;
         }
+      }
+      const u = (chosenIdx + Math.random()) / NUM_BUCKETS;
+      const clamped = Math.min(0.999, Math.max(0.001, u));
+      pushRecent(chosenIdx);
+      return clamped;
+    }
 
-        // Load and play video
-        function loadVideo(file) {
-            videoElement = document.createElement('video');
-            videoElement.src = URL.createObjectURL(file);
-            videoElement.loop = true;
-            videoElement.muted = true;
-            videoElement.play();
-            videoElement.style.position = 'absolute';
-            videoElement.style.top = '0';
-            videoElement.style.left = '0';
-            videoElement.style.width = '100%';
-            videoElement.style.height = '100%';
-            document.body.appendChild(videoElement);
-            videoPlaying = true;
+    /* ---------- Video loading ---------- */
+    function makeVideoFromFile(file){
+      const v = document.createElement('video');
+      v.src = URL.createObjectURL(file);
+      v.loop = true; v.muted = true; v.playsInline = true; v.preload='auto';
+      v.addEventListener('loadedmetadata', ()=> videoReady = true);
+      v.play().catch(()=>{});
+      v.style.display='none';
+      document.body.appendChild(v);
+      return v;
+    }
+    function loadVideo(file){
+      videoElement = makeVideoFromFile(file);
+      videos = []; currentVid = 0; videoPlaying = true;
+    }
+    function loadVideos(files){
+      videos = Array.from(files).map(makeVideoFromFile);
+      videoElement = null; currentVid = 0; videoPlaying = true;
+    }
+
+    /* ---------- Seek / jump ---------- */
+    function jumpToVideoSection(){
+      const active = (enableMulti.checked && videos.length) ? videos[currentVid] : videoElement;
+      if (!active || !videoReady || !isFinite(active.duration) || active.duration<=0) return;
+
+      const sectionU = pickSectionU(active.duration);
+      if (sectionU === null) return;
+
+      if (enableMulti.checked && videos.length){
+        for (const v of videos){ if (isFinite(v.duration) && v.duration>0) v.currentTime = v.duration * sectionU; }
+        const mode = multiModeSel.value;
+        if (videos.length>1){
+          if (mode === 'cycle') currentVid = (currentVid + 1) % videos.length;
+          else if (mode === 'random') currentVid = (Math.random()*videos.length)|0;
+          else if (mode === 'stick'){ if (Math.random()<0.15) currentVid = (currentVid + 1) % videos.length; }
         }
+      } else {
+        active.currentTime = active.duration * sectionU;
+      }
+    }
 
-        // Jump to a specific section of the video based on beat intensity
-        function jumpToVideoSection() {
-            const lowFreqThreshold = 60; // Low frequency (bass) section
-            const midFreqThreshold = 250; // Mid frequency section
-            const highFreqThreshold = 1000; // High frequency section
+    /* ---------- Detection helpers ---------- */
+    function median(a){ const s=a.slice().sort((x,y)=>x-y), m=s.length>>1; return s.length%2?s[m]:0.5*(s[m-1]+s[m]); }
+    function mad(a, med){ const d=a.map(v=>Math.abs(v-med)); return median(d)||1e-6; }
+    function hzToBin(hz, fftSize, sr){ return Math.min((fftSize/2)-1, Math.max(0, Math.floor(hz * fftSize / sr))); }
+    function bandFlux(curr, prev, i0, i1){ let sum=0; for(let i=i0;i<i1;i++){ const d=curr[i]-prev[i]; if (d>0) sum+=d; } return sum/Math.max(1,(i1-i0)); }
+    function pushSpectrumCopy(arr){ const c=new Uint8Array(arr.length); c.set(arr); specStack[specPtr]=c; specPtr=(specPtr+1)%SPEC_HISTORY; if(specCount<SPEC_HISTORY) specCount++; }
+    function percussiveScore(curr){
+      if (specCount < SPEC_HISTORY) return 0.6;
+      const bins = curr.length; let hits=0, considered=0;
+      for(let i=2;i<Math.min(96,bins);i++){
+        let tmp=new Array(SPEC_HISTORY); for(let j=0;j<SPEC_HISTORY;j++) tmp[j]=specStack[j][i];
+        tmp.sort((a,b)=>a-b);
+        const med = SPEC_HISTORY%2? tmp[SPEC_HISTORY>>1] : 0.5*(tmp[(SPEC_HISTORY>>1)-1]+tmp[SPEC_HISTORY>>1]);
+        if (curr[i] > med + 6) hits++; considered++;
+      }
+      return considered ? hits/considered : 0.6;
+    }
+    function pushFlux(f){ fluxHistory[fluxIndex]=f; fluxIndex=(fluxIndex+1)%FLUX_HISTORY_FRAMES; if(fluxCount<FLUX_HISTORY_FRAMES) fluxCount++; }
+    function fluxStats(){ const arr=fluxHistory.slice(0,fluxCount); const med=median(arr); const m=mad(arr,med); return {med,m}; }
 
-            let sectionStart = 0;
+    function noteOnset(t){
+      onsetTimes.push(t);
+      while(onsetTimes.length && (t-onsetTimes[0])>DENSITY_WINDOW) onsetTimes.shift();
+      if (onsetTimes.length>=4){
+        const iois=[]; for(let i=1;i<onsetTimes.length;i++) iois.push(onsetTimes[i]-onsetTimes[i-1]);
+        let per = median(iois);
+        per = Math.max(60/BPM_MAX, Math.min(60/BPM_MIN, per));
+        beatPeriod = per; beatPhaseT0 = onsetTimes[onsetTimes.length-1];
+      }
+    }
+    function onsetDensity(now){
+      while(onsetTimes.length && (now-onsetTimes[0])>DENSITY_WINDOW) onsetTimes.shift();
+      return onsetTimes.length / DENSITY_WINDOW;
+    }
 
-            if (beatIntensity < lowFreqThreshold) {
-                sectionStart = Math.random() * 0.25; // First quarter of the video
-            } else if (beatIntensity < midFreqThreshold) {
-                sectionStart = Math.random() * 0.5 + 0.25; // Middle half of the video
-            } else if (beatIntensity < highFreqThreshold) {
-                sectionStart = Math.random() * 0.25 + 0.75; // Last quarter of the video
-            }
+    function scheduleOrImmediateCut(now){
+      if (beatPeriod && beatPhaseT0!=null){
+        const tRel = Math.max(0, now - beatPhaseT0);
+        const nNext = Math.ceil((tRel + LATENCY_COMP) / beatPeriod);
+        const gridT = beatPhaseT0 + nNext * beatPeriod;
+        const dt = gridT - now;
+        if (dt >= 0 && dt <= BEAT_SNAP_WINDOW){ scheduledCutAt = gridT; return; }
+      }
+      doCut();
+    }
 
-            videoElement.currentTime = videoElement.duration * sectionStart;
+    function doCut(){
+      const before = (enableMulti.checked && videos.length ? videos[currentVid] : videoElement)?.currentTime || 0;
+      // quick white flash to emphasize cut
+      ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+      jumpToVideoSection();
+
+      const after = (enableMulti.checked && videos.length ? videos[currentVid] : videoElement)?.currentTime || before;
+      lastCutTime = audioContext.currentTime;
+    }
+
+    function shouldCut(now, novelty, percScore){
+      const d = onsetDensity(now);
+      let mult = 4.0;
+      if (d>=1.7) mult=1.0; else if (d>=1.0) mult=2.0; else if (d>=0.3) mult=3.0;
+      const effectiveMin = BASE_MIN_INTERVAL * mult;
+      const since = now - lastCutTime;
+
+      const {med,m} = fluxStats();
+      const thresh = med + THRESH_K * m;
+      const score = novelty * (0.7 + 0.8*percScore);
+      return (since >= effectiveMin && score > thresh);
+    }
+
+    function cutLogic(){
+      if (!audioContext || !analyser) return;
+      analyser.getByteFrequencyData(frequencyData);
+      const bins = frequencyData.length, sr = audioContext.sampleRate;
+      const iKickHi = hzToBin(KICK_MAX_HZ, analyser.fftSize, sr);
+      const iSnareHi = hzToBin(SNARE_MAX_HZ, analyser.fftSize, sr);
+
+      let novelty = 0;
+      if (prevFreq){
+        const kickFlux  = bandFlux(frequencyData, prevFreq, 2, Math.min(iKickHi,bins));
+        const snareFlux = bandFlux(frequencyData, prevFreq, Math.min(iKickHi,bins), Math.min(iSnareHi,bins));
+        novelty = 1.2*kickFlux + 0.9*snareFlux;
+      }
+
+      pushFlux(novelty);
+      pushSpectrumCopy(frequencyData);
+      const pScore = percussiveScore(frequencyData);
+
+      const now = audioContext.currentTime;
+      if (prevFreq && shouldCut(now, novelty, pScore)){
+        noteOnset(now);
+        scheduleOrImmediateCut(now);
+      }
+
+      if (!prevFreq) prevFreq = new Uint8Array(bins);
+      prevFreq.set(frequencyData);
+    }
+
+    function updateVisualizer(){
+      cutLogic();
+
+      if (scheduledCutAt && audioContext){
+        if (audioContext.currentTime + (audioContext.baseLatency||0) >= scheduledCutAt){
+          doCut(); scheduledCutAt = null;
         }
+      }
 
-        // Flash effect logic based on beat intensity
-        function flashOnBeat() {
-            const currentTime = audioContext.currentTime;
-            beatIntensity = frequencyData.reduce((a, b) => a + b) / frequencyData.length;
+      const src = enableMulti.checked && videos.length ? videos[currentVid] : videoElement;
+      if (videoPlaying && src) drawContain(src, canvas.width, canvas.height);
 
-            // Adjust how fast we cut based on the intensity
-            currentFrameDuration = Math.max(0.5, 1 - beatIntensity / 255);
+      requestAnimationFrame(updateVisualizer);
+    }
 
-            // Prevent very fast cuts by limiting to a minimum duration (0.3s)
-            currentFrameDuration = Math.max(currentFrameDuration, 0.3);
+    /* ---------- Audio / Recording ---------- */
+    function loadAudioFile(file){
+      audioElement = new Audio();
+      audioElement.src = URL.createObjectURL(file);
+      audioElement.load(); audioElement.play();
 
-            if (currentTime - lastCutTime > currentFrameDuration) {
-                lastCutTime = currentTime;
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 512;
 
-                // Jump to a random video section based on intensity
-                jumpToVideoSection();
+      const mediaNode = audioContext.createMediaElementSource(audioElement);
+      mediaDest = audioContext.createMediaStreamDestination();
+      mediaNode.connect(analyser);
+      mediaNode.connect(mediaDest);
+      analyser.connect(audioContext.destination);
 
-                // Flash the screen (to simulate the cut)
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#fff';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            }
-        }
+      frequencyData = new Uint8Array(analyser.frequencyBinCount);
 
-        // Update visualizer based on frequency data
-        function updateVisualizer() {
-            analyser.getByteFrequencyData(frequencyData);
+      // reset
+      prevFreq = null; fluxIndex=0; fluxCount=0; specPtr=0; specCount=0;
+      onsetTimes.length=0; lastCutTime=audioContext.currentTime;
+      beatPeriod=null; beatPhaseT0=null; scheduledCutAt=null;
+      LATENCY_COMP = (audioContext.baseLatency||0) + 0.03;
 
-            // Trigger flash effect based on beat
-            flashOnBeat();
+      updateVisualizer();
 
-            // Draw video frame (if video is playing)
-            if (videoPlaying) {
-                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-            }
+      if (recordEnabled && !isRecording) beginRecording();
+    }
 
-            requestAnimationFrame(updateVisualizer);
-        }
+    function beginRecording(){
+      if (!('MediaRecorder' in window)) { alert('Recording not supported'); return; }
+      const stream = canvas.captureStream(RENDER.fps);
+      if (mediaDest?.stream?.getAudioTracks().length){ stream.addTrack(mediaDest.stream.getAudioTracks()[0]); }
 
-        // Load the audio file
-        function loadAudioFile(file) {
-            audioElement = new Audio();
-            audioElement.src = URL.createObjectURL(file);
-            audioElement.load();
-            audioElement.play();
+      const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+        ? 'video/webm;codecs=vp9,opus'
+        : (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' : 'video/webm');
 
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
+      mediaRecorder = new MediaRecorder(stream, {
+        mimeType: mime,
+        videoBitsPerSecond: RENDER.videoBitsPerSecond,
+        audioBitsPerSecond: RENDER.audioBitsPerSecond
+      });
+      recordedChunks = [];
+      mediaRecorder.ondataavailable = e => { if (e.data && e.data.size>0) recordedChunks.push(e.data); };
+      mediaRecorder.onstop = ()=>{
+        const blob = new Blob(recordedChunks, { type:'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `music-visualizer-${new Date().toISOString().replace(/[:.]/g,'-')}.webm`;
+        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      };
+      mediaRecorder.start();
+      isRecording = true;
+      canvas.style.cursor='none';
+      stopRecordBtn.style.display='inline-flex';
+    }
+    function stopRecording(){ if (!isRecording) return; try{ mediaRecorder.stop(); }catch(e){} isRecording=false; canvas.style.cursor=''; stopRecordBtn.style.display='none'; }
+    stopRecordBtn.addEventListener('click', stopRecording);
 
-            const bufferSource = audioContext.createMediaElementSource(audioElement);
-            bufferSource.connect(analyser);
-            analyser.connect(audioContext.destination);
+    /* ---------- Uploads / start flow ---------- */
+    let audioFile=null, videoFile=null, multiFiles=[];
+    function updateStartEnabled(){
+      const hasAudio = !!audioFile;
+      const hasSingleVideo = !!videoFile;
+      const hasMulti = enableMulti.checked && multiFiles.length>0;
+      startButton.disabled = !(hasAudio && (hasSingleVideo || hasMulti));
+    }
+    audioUpload.addEventListener('change', e=>{ audioFile = e.target.files[0]||null; updateStartEnabled(); });
+    videoUpload.addEventListener('change', e=>{ videoFile = e.target.files[0]||null; updateStartEnabled(); });
+    videosUpload?.addEventListener('change', e=>{ multiFiles = Array.from(e.target.files||[]); updateStartEnabled(); });
 
-            const bufferLength = analyser.frequencyBinCount;
-            frequencyData = new Uint8Array(bufferLength);
+    startButton.addEventListener('click', ()=>{
+      // Lock in render surface & apply settings
+      prepareRenderSurface();
+      applyUIToEngine();
 
-            // Start the visualization loop
-            updateVisualizer();
-        }
-
-        // Handle audio upload
-        audioUpload.addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (file) {
-                audioFile = file;
-                enableStartButton();
-            }
-        });
-
-        // Handle video upload
-        videoUpload.addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (file) {
-                videoFile = file;
-                enableStartButton();
-            }
-        });
-
-        // Enable the start button once both files are uploaded
-        function enableStartButton() {
-            if (audioFile && videoFile) {
-                startButton.disabled = false;
-            }
-        }
-
-        // Hide all UI elements after the start button is clicked
-        function hideUI() {
-            uploadButtons.style.display = 'none'; // Hide upload buttons
-            startButton.style.display = 'none'; // Hide start button
-            canvas.style.display = 'block'; // Show canvas
-        }
-
-        // Start playback once both files are uploaded
-        startButton.addEventListener('click', () => {
-            if (audioFile && videoFile) {
-                loadAudioFile(audioFile);
-                loadVideo(videoFile);
-                hideUI(); // Hide UI elements and show canvas
-            }
-        });
-
-        // Ensure the canvas resizes when the window is resized
-        window.addEventListener('resize', resizeCanvas);
-
-        // Initial canvas size
-        resizeCanvas();
-    </script>
+      if (audioFile && (videoFile || (enableMulti.checked && multiFiles.length))){
+        canvas.style.display = 'block';
+        loadAudioFile(audioFile);
+        if (enableMulti.checked && multiFiles.length) loadVideos(multiFiles);
+        else loadVideo(videoFile);
+        document.getElementById('uploadWrap').style.display='none';
+      }
+    });
+  </script>
 </body>
 </html>
-
-
