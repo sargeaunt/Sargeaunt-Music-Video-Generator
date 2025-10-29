@@ -12,7 +12,18 @@
     }
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,Helvetica,sans-serif;overflow-y:auto}
-    #background-image{position:fixed;inset:0;background:url('https://i.imgur.com/tTqqjda.png') center/cover no-repeat;z-index:-1}
+
+    /* Background video (Google Drive, replaces PNG) */
+    #background-video{
+      position:fixed;
+      inset:0;
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      z-index:-1;
+      pointer-events:none;
+      background:#000;
+    }
 
     /* Hide canvas until Start so splash image stays clean */
     canvas{position:fixed;inset:0;width:100vw;height:100vh;display:none}
@@ -90,7 +101,18 @@
   </style>
 </head>
 <body>
-  <div id="background-image"></div>
+  <!-- Background video (Google Drive link) -->
+  <video
+    id="background-video"
+    autoplay
+    muted
+    loop
+    playsinline
+    preload="auto"
+    aria-hidden="true"
+  >
+    <source src="https://drive.google.com/uc?export=download&id=1leYvMI_V3J0GishsQzlbdAVuzajhLEV0" type="video/mp4">
+  </video>
 
   <div class="upload-wrap" id="uploadWrap">
     <div class="row" id="buttonsRow">
@@ -334,7 +356,7 @@
     });
 
     /* ---------- Canvas sizing ---------- */
-    function resize(){ /* keep CSS fullscreen, buffer stays at fixed RENDER size */ }
+    function resize(){ /* canvas buffer fixed by RENDER; CSS handles preview scaling */ }
     addEventListener('resize', resize);
 
     /* ---------- Coverage sampler ---------- */
@@ -373,10 +395,20 @@
       return clamped;
     }
 
+    /* ---------- Object URL management (leak prevention) ---------- */
+    const objectURLs = new Set();
+    function trackURL(url){ if (url) objectURLs.add(url); }
+    window.addEventListener('beforeunload', ()=>{
+      for (const url of objectURLs) URL.revokeObjectURL(url);
+      objectURLs.clear();
+    });
+
     /* ---------- Video loading ---------- */
     function makeVideoFromFile(file){
       const v = document.createElement('video');
-      v.src = URL.createObjectURL(file);
+      const url = URL.createObjectURL(file);
+      trackURL(url);
+      v.src = url;
       v.loop = true; v.muted = true; v.playsInline = true; v.preload='auto';
       v.addEventListener('loadedmetadata', ()=> videoReady = true);
       v.play().catch(()=>{});
@@ -393,21 +425,34 @@
       videoElement = null; currentVid = 0; videoPlaying = true;
     }
 
+    /* ---------- Multi-video readiness helper ---------- */
+    function isVideoReady(v){
+      return v && v.readyState >= 1 && isFinite(v.duration) && v.duration > 0;
+    }
+
     /* ---------- Seek / jump ---------- */
     function jumpToVideoSection(){
-      const active = (enableMulti.checked && videos.length) ? videos[currentVid] : videoElement;
-      if (!active || !videoReady || !isFinite(active.duration) || active.duration<=0) return;
+      const useMulti = enableMulti.checked && videos.length;
+      const active = useMulti ? videos[currentVid] : videoElement;
+      if (!active || !videoReady || !isVideoReady(active)) return;
 
       const sectionU = pickSectionU(active.duration);
       if (sectionU === null) return;
 
-      if (enableMulti.checked && videos.length){
-        for (const v of videos){ if (isFinite(v.duration) && v.duration>0) v.currentTime = v.duration * sectionU; }
+      if (useMulti){
+        for (const v of videos){
+          if (isVideoReady(v)) v.currentTime = v.duration * sectionU;
+        }
         const mode = multiModeSel.value;
         if (videos.length>1){
           if (mode === 'cycle') currentVid = (currentVid + 1) % videos.length;
           else if (mode === 'random') currentVid = (Math.random()*videos.length)|0;
           else if (mode === 'stick'){ if (Math.random()<0.15) currentVid = (currentVid + 1) % videos.length; }
+          // Ensure newly selected is ready; fall back to first ready
+          if (!isVideoReady(videos[currentVid])){
+            const idx = videos.findIndex(isVideoReady);
+            if (idx !== -1) currentVid = idx;
+          }
         }
       } else {
         active.currentTime = active.duration * sectionU;
@@ -432,7 +477,12 @@
       return considered ? hits/considered : 0.6;
     }
     function pushFlux(f){ fluxHistory[fluxIndex]=f; fluxIndex=(fluxIndex+1)%FLUX_HISTORY_FRAMES; if(fluxCount<FLUX_HISTORY_FRAMES) fluxCount++; }
-    function fluxStats(){ const arr=fluxHistory.slice(0,fluxCount); const med=median(arr); const m=mad(arr,med); return {med,m}; }
+    function fluxStats(){
+      const arr=fluxHistory.slice(0,fluxCount);
+      const med=median(arr);
+      const m=mad(arr,med);
+      return {med, m: Math.max(m, 1e-6)}; // guard against zero MAD
+    }
 
     function noteOnset(t){
       onsetTimes.push(t);
@@ -461,13 +511,9 @@
     }
 
     function doCut(){
-      const before = (enableMulti.checked && videos.length ? videos[currentVid] : videoElement)?.currentTime || 0;
       // quick white flash to emphasize cut
       ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
-
       jumpToVideoSection();
-
-      const after = (enableMulti.checked && videos.length ? videos[currentVid] : videoElement)?.currentTime || before;
       lastCutTime = audioContext.currentTime;
     }
 
@@ -528,12 +574,20 @@
     }
 
     /* ---------- Audio / Recording ---------- */
+    let audioFile=null, videoFile=null, multiFiles=[];
     function loadAudioFile(file){
       audioElement = new Audio();
-      audioElement.src = URL.createObjectURL(file);
-      audioElement.load(); audioElement.play();
+      const url = URL.createObjectURL(file);
+      trackURL(url);
+      audioElement.src = url;
+      audioElement.load();
 
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      // Ensure context is running (iOS/Safari)
+      if (audioContext.state === 'suspended') {
+        audioContext.resume().catch(()=>{});
+      }
+
       analyser = audioContext.createAnalyser();
       analyser.fftSize = 512;
 
@@ -552,6 +606,9 @@
       LATENCY_COMP = (audioContext.baseLatency||0) + 0.03;
 
       updateVisualizer();
+
+      // Start playback after graph is wired and context resumed
+      audioElement.play().catch(()=>{});
 
       if (recordEnabled && !isRecording) beginRecording();
     }
@@ -588,7 +645,6 @@
     stopRecordBtn.addEventListener('click', stopRecording);
 
     /* ---------- Uploads / start flow ---------- */
-    let audioFile=null, videoFile=null, multiFiles=[];
     function updateStartEnabled(){
       const hasAudio = !!audioFile;
       const hasSingleVideo = !!videoFile;
