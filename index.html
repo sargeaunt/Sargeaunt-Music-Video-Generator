@@ -13,15 +13,15 @@
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,Helvetica,sans-serif;overflow-y:auto}
     #background-video {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  z-index: -1;
-  pointer-events: none;
-  background: #000;
-}
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: -1;
+      pointer-events: none;
+      background: #000;
+    }
 
     /* Hide canvas until Start so splash image stays clean */
     canvas{position:fixed;inset:0;width:100vw;height:100vh;display:none}
@@ -97,21 +97,26 @@
     }
     #stop-recording:hover{ transform: translateY(-2px); }
     #stop-recording svg{ width:22px;height:22px;fill:#ff4d4d; }
+
+    /* --- Minimal styling for the multi-video list --- */
+    #video-file-list{ list-style:none; padding-left:0; margin:8px 0 0 0; font-size:13px; color:var(--muted); display:flex; flex-direction:column; gap:6px; }
+    .video-li{ display:flex; align-items:center; justify-content:space-between; border:1px solid var(--line); border-radius:8px; padding:6px 10px; background:rgba(255,255,255,0.07); }
+    .video-li button{ background:transparent; border:none; color:#fff; cursor:pointer; font-size:16px; }
   </style>
 </head>
 <body>
  
   <video
-  id="background-video"
-  autoplay
-  muted
-  loop
-  playsinline
-  preload="auto"
-  aria-hidden="true"
->
-  <source src="Backgroundvideov1.mp4" type="video/mp4">
-</video>
+    id="background-video"
+    autoplay
+    muted
+    loop
+    playsinline
+    preload="auto"
+    aria-hidden="true"
+  >
+    <source src="Backgroundvideov1.mp4" type="video/mp4">
+  </video>
 
   <div class="upload-wrap" id="uploadWrap">
     <div class="row" id="buttonsRow">
@@ -210,6 +215,9 @@
               <label for="videos-upload" class="label-btn">Choose Videos</label>
               <input type="file" id="videos-upload" accept="video/*" multiple>
               <div class="hint">Optional: add multiple clips to mix between.</div>
+
+              <!-- ADDED: list of uploaded multi-video files -->
+              <ul id="video-file-list"></ul>
             </div>
           </div>
         </div>
@@ -618,7 +626,47 @@
     }
     audioUpload.addEventListener('change', e=>{ audioFile = e.target.files[0]||null; updateStartEnabled(); });
     videoUpload.addEventListener('change', e=>{ videoFile = e.target.files[0]||null; updateStartEnabled(); });
-    videosUpload?.addEventListener('change', e=>{ multiFiles = Array.from(e.target.files||[]); updateStartEnabled(); });
+
+    /* ---- CHANGED: multi video upload (append + display + remove) ---- */
+    videosUpload?.addEventListener('change', e=>{
+      const newFiles = Array.from(e.target.files||[]);
+      for (const file of newFiles){
+        const key = file.name + '|' + file.size + '|' + (file.lastModified||0);
+        const exists = multiFiles.some(f => (f.name + '|' + f.size + '|' + (f.lastModified||0)) === key);
+        if (!exists) multiFiles.push(file);
+      }
+      e.target.value = ''; // allow selecting the same file again if needed
+      updateVideoFileList();
+      updateStartEnabled();
+    });
+
+    function updateVideoFileList(){
+      const listEl = document.getElementById('video-file-list');
+      if (!listEl) return;
+      listEl.innerHTML = '';
+      for (const file of multiFiles){
+        const li = document.createElement('li');
+        li.className = 'video-li';
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = file.name;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.title = 'Remove this file';
+        removeBtn.textContent = '❌';
+        removeBtn.addEventListener('click', ()=>{
+          const key = file.name + '|' + file.size + '|' + (file.lastModified||0);
+          multiFiles = multiFiles.filter(f => (f.name + '|' + f.size + '|' + (f.lastModified||0)) !== key);
+          updateVideoFileList();
+          updateStartEnabled();
+        });
+
+        li.appendChild(nameSpan);
+        li.appendChild(removeBtn);
+        listEl.appendChild(li);
+      }
+    }
+    /* --------------------------------------------------------------- */
 
     startButton.addEventListener('click', ()=>{
       // Lock in render surface & apply settings
